@@ -1,0 +1,20 @@
+# Local samples and exports
+/verre-samples.js
+*.wav
+*.wave
+*.mp3
+*.aiff
+*.aif
+*.flac
+*.ogg
+*.opus
+*.m4a
+*.aac
+*.webm
+*.mp4
+*.mov
+
+# Local editor and OS files
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Motion Harmonizer</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="tracking.js"></script>
+  <script defer src="sound.js"></script>
+  <script defer src="portal.js"></script>
+  <script defer src="app.js"></script>
+  <script defer src="prism.js"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Motion Harmonizer</h1>
+        <p>Turn movement in a video or live camera into an ambient soundtrack.</p>
+      </div>
+      <div class="source-actions">
+        <button id="choose" class="primary" type="button">Open video</button>
+        <button id="camera" type="button">Open camera</button>
+        <button id="load-sounds" type="button">Load local sounds</button>
+      </div>
+      <input id="sound-file" type="file" accept=".js,.json" hidden>
+      <input id="file" type="file" accept="video/*,.mp4,.mov,.webm,.m4v,.ogv" hidden>
+    </header>
+
+    <div class="status-row">
+      <div>
+        <div id="sound-status" role="status"></div>
+        <p id="portal-status" role="status" hidden></p>
+        <p id="status" role="status">Ready to open a video or camera.</p>
+        <progress id="progress" max="1" value="0" aria-label="Video analysis progress" hidden></progress>
+      </div>
+      <button id="cancel" type="button" hidden>Cancel analysis</button>
+    </div>
+
+    <section class="studio" aria-label="Video and soundtrack">
+      <div class="stage" id="stage">
+        <div id="frame" class="frame" hidden>
+          <video id="video" muted playsinline preload="none" aria-label="Selected video"></video>
+          <canvas id="portal" aria-hidden="true"></canvas>
+          <canvas id="overlay" aria-hidden="true"></canvas>
+        </div>
+        <div id="placeholder" class="placeholder">
+          <div id="prism-scene" class="prism-scene">
+              <svg viewBox="0 0 1000 560" role="img" aria-labelledby="prism-description">
+                  <title id="prism-description">A dark triangle with a soft spectrum of light that follows your pointer</title>
+                  <defs>
+                      <!-- Fade the whole effect to zero before any rectangular SVG boundary. -->
+                      <radialGradient id="halo-envelope-gradient" gradientUnits="userSpaceOnUse" cx="500" cy="280" r="260">
+                          <stop offset="0" stop-color="white"/>
+                          <stop offset=".64" stop-color="white"/>
+                          <stop offset=".84" stop-color="#888"/>
+                          <stop offset="1" stop-color="black"/>
+                      </radialGradient>
+                      <mask id="halo-envelope" maskUnits="userSpaceOnUse" x="0" y="0" width="1000" height="560" style="mask-type: luminance">
+                          <rect width="1000" height="560" fill="url(#halo-envelope-gradient)"/>
+                      </mask>
+  
+                      <linearGradient id="halo-spectrum" x1="0" y1="0" x2="1" y2=".4">
+                          <stop stop-color="#b66b88"/><stop offset=".45" stop-color="#a58bc7"/>
+                          <stop offset=".75" stop-color="#88a9cf"/><stop offset="1" stop-color="#98b9b4"/>
+                      </linearGradient>
+                      <radialGradient id="halo-pointer" gradientUnits="userSpaceOnUse" cx="570" cy="220" r="300">
+                          <stop stop-color="white"/><stop offset=".3" stop-color="white" stop-opacity=".8"/>
+                          <stop offset="1" stop-color="white" stop-opacity="0"/>
+                      </radialGradient>
+                      <mask id="halo-direction" maskUnits="userSpaceOnUse" x="-1000" y="-1000" width="3000" height="2560"><rect x="-1000" y="-1000" width="3000" height="2560" fill="url(#halo-pointer)"/></mask>
+                      <filter id="halo-wide" filterUnits="userSpaceOnUse" x="-1000" y="-1000" width="3000" height="2560" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="45"/></filter>
+                      <filter id="halo-medium" filterUnits="userSpaceOnUse" x="-1000" y="-1000" width="3000" height="2560" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="17"/></filter>
+                      <filter id="halo-edge" filterUnits="userSpaceOnUse" x="-1000" y="-1000" width="3000" height="2560" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="4"/></filter>
+                  </defs>
+                  <g class="triangle-idle" pointer-events="none">
+                      <!-- A fine ambient edge keeps the silhouette legible. -->
+                      <path d="M500 130 L660 407 L340 407 Z"
+                            fill="none" stroke="#bab8c2" stroke-width="1"
+                            opacity=".26" filter="url(#halo-edge)"/>
+                      <!-- One restrained pool of light circulates around the edge. -->
+                      <path class="triangle-idle-trace"
+                            d="M500 130 L660 407 L340 407 Z" pathLength="100"
+                            fill="none" stroke="#c7bddc" stroke-width="22"
+                            stroke-linecap="round" stroke-dasharray="20 80"
+                            filter="url(#halo-medium)"/>
+                  </g>
+  
+                  <g mask="url(#halo-envelope)"><g id="halo-light" mask="url(#halo-direction)">
+                      <path d="M500 130 L660 407 L340 407 Z" fill="url(#halo-spectrum)" filter="url(#halo-wide)" opacity=".32"/>
+                      <path d="M500 130 L660 407 L340 407 Z" fill="none" stroke="url(#halo-spectrum)" stroke-width="10" filter="url(#halo-medium)"/>
+                      <path d="M500 130 L660 407 L340 407 Z" fill="none" stroke="#e1dceb" stroke-width="1.4" filter="url(#halo-edge)" opacity=".55"/>
+                  </g>
+                  </g>
+                  <path role="button" tabindex="0" aria-label="Use white triangle lighting" aria-pressed="false" id="halo-face" d="M500 130 L660 407 L340 407 Z" fill="#101112"/>
+              </svg>
+          </div>
+          <p>Open a video or start the camera</p>
+        </div>
+      </div>
+
+      <div class="transport" id="transport">
+        <button id="play" type="button" disabled>Play</button>
+        <input id="timeline" type="range" min="0" max="1" step="0.001" value="0" aria-label="Video position" disabled>
+        <output id="time">0:00 / 0:00</output>
+      </div>
+
+      <div class="settings">
+        <label hidden><input id="live-blobs" type="checkbox"> Live blob tracking</label>
+        <label><input id="show-tracks" type="checkbox" checked> Tracking overlay</label>
+        <label><input id="original" type="checkbox" disabled> Original audio</label>
+        <label class="volume">Synth volume <input id="volume" type="range" min="0" max="1" step="0.01" value="0.8"></label>
+        <button id="enable-portal" type="button" hidden>Enable finger portal</button>
+        <button id="enable-sound" type="button" hidden>Enable sound</button>
+        <button id="export" type="button" disabled>Download WAV</button>
+      </div>
+    </section>
+
+    <section id="portal-controls" class="portal-controls" aria-labelledby="portal-controls-title" hidden>
+      <h2 id="portal-controls-title">Portal controls</h2>
+      <p>Curl a finger once, then straighten it before using it again. Loop changes land on the next bar.</p>
+      <dl>
+        <div data-portal-control="pinch"><dt>Both thumbs + index fingers</dt><dd>Touch the pinches together, then spread to open the next filter.</dd></div>
+        <div data-portal-control="melodic"><dt>Either middle finger</dt><dd>Cycle the secondary melody <span data-portal-value></span></dd></div>
+        <div data-portal-control="left-ring"><dt>Left ring finger</dt><dd>Cycle full drums <span data-portal-value></span></dd></div>
+        <div data-portal-control="left-pinky"><dt>Left pinky</dt><dd>Toggle tops <span data-portal-value></span></dd></div>
+        <div data-portal-control="right-ring"><dt>Right ring finger</dt><dd>Next bass loop <span data-portal-value></span></dd></div>
+        <div data-portal-control="right-pinky"><dt>Right pinky</dt><dd>Previous bass loop</dd></div>
+      </dl>
+      <p id="portal-gesture-status" role="status"></p>
+    </section>
+
+  </main>
+</body>
+</html>
