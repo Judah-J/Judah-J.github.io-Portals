@@ -484,7 +484,7 @@
 
   async function cameraConstraints() {
     const size = { width: { ideal: 640 }, height: { ideal: 480 } };
-    if (isMobileCamera()) return { ...size, facingMode: { ideal: "environment" } };
+    if (isMobileCamera()) return { ...size, facingMode: { exact: "user" } };
     const devices = await navigator.mediaDevices.enumerateDevices();
     const webcams = devices.filter(({ kind, label, deviceId }) => kind === "videoinput" && deviceId && deviceId !== "default" && label &&
       !excludedCamera.test(label));
@@ -572,7 +572,9 @@
       if (camera !== job) return;
       if (error.name === "OverconstrainedError") {
         rememberedCamera(null);
-        reset("The saved webcam is unavailable. Check that the webcam is connected and that this site has camera permission, then try again.");
+        reset(isMobileCamera()
+          ? "The front camera is unavailable. Check this site has camera permission and try again."
+          : "The saved webcam is unavailable. Check that the webcam is connected and that this site has camera permission, then try again.");
       } else {
         reset(job.stream ? "The camera connected, but no preview started. Close other apps using the camera and try again." : cameraError(error));
       }
