@@ -33,6 +33,7 @@
   const showTracks = byId("show-tracks");
   const liveBlobs = byId("live-blobs");
   const cameraButton = byId("camera");
+  const switchCamera = byId("switch-camera");
   const transport = byId("transport");
   const enableSound = byId("enable-sound");
   const enablePortal = byId("enable-portal");
@@ -305,6 +306,7 @@
     enablePortal.hidden = true;
     enablePortal.disabled = false;
     enablePortal.textContent = "Enable finger portal";
+    switchCamera.hidden = true;
     cameraButton.textContent = "Open camera";
     transport.hidden = false;
     exportButton.hidden = false;
@@ -482,9 +484,9 @@
     }
   }
 
-  async function cameraConstraints() {
+  async function cameraConstraints(facing = "user") {
     const size = { width: { ideal: 640 }, height: { ideal: 480 } };
-    if (isMobileCamera()) return { ...size, facingMode: { exact: "user" } };
+    if (isMobileCamera()) return { ...size, facingMode: { exact: facing } };
     const devices = await navigator.mediaDevices.enumerateDevices();
     const webcams = devices.filter(({ kind, label, deviceId }) => kind === "videoinput" && deviceId && deviceId !== "default" && label &&
       !excludedCamera.test(label));
@@ -497,7 +499,11 @@
     return previous && !blocked ? { ...size, deviceId: { exact: previous } } : null;
   }
 
-  async function openCamera() {
+  function facingLabel(facing) {
+    return facing === "environment" ? "rear" : "front";
+  }
+
+  async function openCamera({ facing = "user", restore = null, previousFacing = null } = {}) {
     if (!window.isSecureContext) {
       status.textContent = "Camera access requires a secure page. Use HTTPS, or open the app at localhost or 127.0.0.1 on this device.";
       return;
@@ -506,8 +512,9 @@
       status.textContent = "Camera access is unavailable here. Open this page directly in a browser that supports webcam access.";
       return;
     }
-    reset("Finding your camera…");
-    const job = { stream: null, tracks: null, cancelFrame: null, controller: new AbortController() };
+    const mobile = isMobileCamera();
+    reset(previousFacing ? "Switching to " + facingLabel(facing) + " camera…" : "Finding your camera…");
+    const job = { facing, stream: null, tracks: null, cancelFrame: null, controller: new AbortController() };
     camera = job;
     cameraButton.textContent = "Cancel camera";
     let audioReady;
@@ -520,7 +527,7 @@
       if (camera === job) reset("No response from the camera. Check the browser’s camera permission and try again.");
     }, 25000);
     try {
-      const constraints = await cameraConstraints();
+      const constraints = await cameraConstraints(facing);
       if (camera !== job) return;
       if (!constraints) {
         reset("The app could not identify your laptop webcam. Allow Camera in the browser permissions for this site, then reload. If access is already allowed, check that the webcam is connected.");
@@ -559,21 +566,32 @@
       if (camera !== job) return;
       const source = selectedTrack?.label;
       if (!isMobileCamera() && constraints.deviceId?.exact) rememberedCamera(constraints.deviceId.exact);
-      status.textContent = source ? "Camera live · " + source : "Camera live";
+      const cameraName = mobile ? facingLabel(facing) + " camera" : source;
+      const liveMessage = cameraName ? "Camera live · " + cameraName : "Camera live";
+      status.textContent = restore?.notice ? restore.notice + " " + liveMessage : liveMessage;
+      if (mobile) {
+        switchCamera.textContent = "Switch to " + facingLabel(facing === "user" ? "environment" : "user") + " camera";
+        switchCamera.hidden = false;
+      }
       enableSound.hidden = audioContext?.state === "running";
       void audioReady.then(ready => {
         if (camera === job) enableSound.hidden = ready && audioContext.state === "running";
       });
       enablePortal.hidden = false;
       liveBlobs.closest("label").hidden = false;
-      showTracks.closest("label").hidden = true;
+      liveBlobs.checked = Boolean(restore?.blobs);
+      showTracks.closest("label").hidden = !liveBlobs.checked;
       watchCamera(job);
+      if (restore?.portal) void togglePortal();
     } catch (error) {
       if (camera !== job) return;
+      if (mobile && previousFacing) {
+        return openCamera({ facing: previousFacing, restore: { ...restore, notice: "Could not open the " + facingLabel(facing) + " camera." } });
+      }
       if (error.name === "OverconstrainedError") {
         rememberedCamera(null);
         reset(isMobileCamera()
-          ? "The front camera is unavailable. Check this site has camera permission and try again."
+          ? "The " + facingLabel(facing) + " camera is unavailable. Check this site has camera permission and try again."
           : "The saved webcam is unavailable. Check that the webcam is connected and that this site has camera permission, then try again.");
       } else {
         reset(job.stream ? "The camera connected, but no preview started. Close other apps using the camera and try again." : cameraError(error));
@@ -643,7 +661,18 @@
     if (camera) reset("Camera stopped.");
     else void openCamera();
   });
-  enablePortal.addEventListener("click", async () => {
+  switchCamera.addEventListener("click", () => {
+    const job = camera;
+    if (!job?.stream || !isMobileCamera()) return;
+    const facing = job.facing === "user" ? "environment" : "user";
+    void openCamera({ facing, previousFacing: job.facing, restore: {
+      blobs: liveBlobs.checked,
+      portal: Boolean(job.detector || job.portalLoad)
+    } });
+  });
+  enablePortal.addEventListener("click", togglePortal);
+
+  async function togglePortal() {
     const job = camera;
     if (!job?.stream) return;
     if (job.detector || job.portalLoad) {
@@ -683,7 +712,7 @@
     } finally {
       if (camera === job && job.portalLoad === attempt) job.portalLoad = null;
     }
-  });
+  }
   enableSound.addEventListener("click", async () => {
     const job = camera;
     try {
